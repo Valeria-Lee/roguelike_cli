@@ -220,6 +220,7 @@ def terrain_thread():
     while True:
         with map_lock:
             game_map = generate_random_terrain()
+            print("\ntierra generada, hilo a punto de dormir")
         threading.Event().wait(3)
 
 def gameplay_thread():
