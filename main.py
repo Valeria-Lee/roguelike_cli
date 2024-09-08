@@ -8,6 +8,11 @@ rows_nums: int = 4
 
 prev_symbol: str = None
 door = None
+playing: bool
+
+map_lock = threading.Lock()
+gameplay_loop_thread = None
+terrain_gen_thread = None
 
 class Tile:
     def __init__(self, symbol='\033[0;32m.\033[0;32m', type='grass'):
@@ -133,20 +138,22 @@ def init_map(map, player):
     map[player.pos[0]][player.pos[1]] = player.symbol
     display_screen(map)
 
-def update_map(map, player):  
-    prev_symbol = map[player.pos[0]][player.pos[1]]
+def update_map(map, player): 
+    with map_lock:
 
-    if prev_symbol == "\033[0;31mX\033[0;31m": prev_symbol = '\033[0;32m.\033[0;32m'
+        prev_symbol = map[player.pos[0]][player.pos[1]]
 
-    for i in range(len(map)):
-        for j in range(len(map[i])):
-            if map[i][j] == "\033[0;31mX\033[0;31m":
-                map[i][j] = prev_symbol
-                break
+        if prev_symbol == "\033[0;31mX\033[0;31m": prev_symbol = '\033[0;32m.\033[0;32m'
 
-    map[player.pos[0]][player.pos[1]] = player.symbol
+        for i in range(len(map)):
+            for j in range(len(map[i])):
+                if map[i][j] == "\033[0;31mX\033[0;31m":
+                    map[i][j] = prev_symbol
+                    break
 
-    display_screen(map)
+        map[player.pos[0]][player.pos[1]] = player.symbol
+
+        display_screen(map)
 
 def add_enemy(map):
     enemy_pos = [random.randint(1,3), random.randint(1,7)]
@@ -165,14 +172,16 @@ def kill_enemy(enemy, map):
             if map[i][j] == enemy.symbol:
                 new_tile = Tile()
                 map[i][j] = new_tile.get_symbol()
-                print("you killed the enemy!")
+                print("you killed the enemy!!")
                 return enemy_killed
 
 def check_win(enemy_killed, door , player):
     if enemy_killed and player.pos == door.pos:
         print("you win!!")
+        main_gameplay()
 
 def main_gameplay():
+    global map_lock, terrain_gen_thread, gameplay_loop_thread
     initial_map = generate_framed_screen()
     setup_done: bool = False
     p: Player
@@ -181,9 +190,9 @@ def main_gameplay():
     attack_pos = e.get_attack_points()
     door = add_door(initial_map)
     can_kill_enemy: bool = False
-    print(door.get_pos())
+    playing: bool = True
 
-    while True:
+    while playing:
         if not setup_done:
             p = Player()
             init_map(initial_map, p)
@@ -201,6 +210,29 @@ def main_gameplay():
                     kill_enemy(e,initial_map)
                 
                 check_win(can_kill_enemy, door, p)
+        if terrain_gen_thread is not None:
+            print(f"El hilo de generacion de terreno esta vivo? -> {terrain_gen_thread.is_alive()}")
+        if gameplay_loop_thread is not None:
+            print(f"El hilo del juego esta vivo? -> {gameplay_loop_thread.is_alive()}")
+
+def terrain_thread():
+    global game_map
+    while True:
+        with map_lock:
+            game_map = generate_random_terrain()
+        threading.Event().wait(3)
+
+def gameplay_thread():
+    main_gameplay()
+
+def main():
+    global terrain_gen_thread, gameplay_loop_thread
+
+    terrain_gen_thread = threading.Thread(target=terrain_thread)
+    terrain_gen_thread.start()
+
+    gameplay_loop_thread = threading.Thread(target=gameplay_thread)
+    gameplay_loop_thread.start()
 
 if __name__ == '__main__':
-    main_gameplay()
+    main()
